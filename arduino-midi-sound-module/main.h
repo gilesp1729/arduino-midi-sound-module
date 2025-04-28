@@ -26,11 +26,11 @@
 #endif
 
 #include <stdint.h>
-#include "midi.h"
-#include "ssd1306.h"
+//#include "midi.h"
+//#include "ssd1306.h"
 #include "midisynth.h"
 
-Ssd1306</* rotate 180: */ true> display;    // SSD1306 driver for 128x64 OLED SPI display
+//Ssd1306</* rotate 180: */ true> display;    // SSD1306 driver for 128x64 OLED SPI display
 MidiSynth synth;
 
 // The below thunks are invoked during Midi::Dispatch() and forwarded to our MidiSynth.
@@ -43,17 +43,23 @@ void pitchBend(uint8_t channel, int16_t value)						          { synth.midiPitchB
 
 // Invoked once after the device is reset, prior to starting the main 'loop()' below.
 void setup() {
-  display.begin();                        // Initializing the display prior to start the synth ensures that
-  display.reset();                        // the display has exclusive access to SPI during 'setup()'.
-  display.setRegion(0, 127, 0, 7, 0);     // (Note: 7 -> pages 0..7, each page being 8px, for 64px total.)
+  //display.begin();                        // Initializing the display prior to start the synth ensures that
+  //display.reset();                        // the display has exclusive access to SPI during 'setup()'.
+  //display.setRegion(0, 127, 0, 7, 0);     // (Note: 7 -> pages 0..7, each page being 8px, for 64px total.)
   
+  // Serial port for debugging.
+  Serial.begin(9600);
+  while (!Serial)
+    ;
+
   synth.begin();                          // Start synth sample/mixing on Timer2 ISR
 
-  Midi::begin(MIDI_BAUD);                 // Start receiving MIDI messages via USART.
+  //Midi::begin(MIDI_BAUD);                 // Start receiving MIDI messages via USART.
   
   sei();                                  // Begin processing interrupts.
 }
 
+#if 0
 // Helper used by main 'loop()' to set each column of an 8x7 block of pixels to the given mask,
 // and then dispatch any MIDI messages that were queued while the SPI transfer was in progress.
 //
@@ -63,6 +69,7 @@ void display_send7(uint8_t mask) {
   display.set7x8(mask);                       // Set first 7 columns of currently selected 8x8 block to given 'mask'.
   Midi::dispatch();                           // (Drain the pending queue of MIDI messages)
 }
+#endif // 0
 
 // There are four activities happening concurrently, roughly in priority order:
 //
@@ -77,9 +84,39 @@ void display_send7(uint8_t mask) {
 //        b. Updating the bar graph on the OLED display with the current amplitude of each voice.
 //
 void loop() {
-  Midi::dispatch();                           // Each time through the loop, we drain the circular buffor of pending MIDI
+  //Midi::dispatch();                           // Each time through the loop, we drain the circular buffor of pending MIDI
                                               // messages.
 
+  // Pick up some simple (single-key) keyboard commands.
+  if (Serial.available())
+  {
+    // Octave starting at middle C, white notes only. A440 is note 69.
+    int names[] = {'c', 'd', 'e', 'f', 'g', 'a', 'b', 'C'};
+    int octave[] = {60,  62,  64,  65,  67,  69,  71,  72};
+    int inst;
+
+    int key = Serial.read();
+
+    for (int i = 0; i < 8; i++)
+    {
+      if (key == names[i])
+      {
+        noteOn(1, octave[i], 100);
+        //delay(50);
+        //noteOff(1, octave[i]);
+        break;
+      }
+
+      // Change instrument to the numbered (1-9)
+      if (key > '0' && key <= '9')
+      {
+        inst = key - '0';
+        programChange(1, inst);
+      }
+    }    
+  }                                              
+
+#if 0
   static uint8_t voice = 0;                   // Each time through the loop, we alse update the amplitude bar for one voice
   voice++;                                    // in round-robin order.
   voice &= 0x0F;
@@ -105,8 +142,10 @@ void loop() {
   for (int8_t i = 6 - page; i >= 0; i--) {    // Set 7x8 blocks under the new bar graph's current level.
     display_send7(0xFF);
   }
+  #endif // 0
 }
 
+#if 0 // What does this really do?
 // Note: Defining `main()` prevents initialization of the Arduino core runtime.
 int main() {
   setup();
@@ -117,5 +156,7 @@ int main() {
   
   return 0;
 }
+
+#endif // 0
 
 #endif /* MAIN_H_ */

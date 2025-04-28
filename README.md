@@ -1,3 +1,13 @@
+# Arduino MIDI Sound Library
+This is a fork of [Arduino MIDI Sound Module](https://github.com/DLehenbauer/arduino-midi-sound-module) with the following changes:
+* MIDI messages are not being received on the USART. The underlying routines for starting notes, etc. are exposed so that calling programs may call them directly. They still follow the MIDI functions closely. A sample test program is provided.
+* Arduino routines like Serial are available for use. Timer 0 is still used for PWM output so delay(), millis() etc. may not work as expected. Alternatives are made available.
+
+# Future work
+* Piano-keyboard enhancements such as stereo effects across the length of the keyboard.
+* Pedal controls to modify enevelope and volume (soft peal, sostenuto, sustain)
+
+# --------------------------------------------------------
 # Arduino MIDI Sound Module
 Turn your Arduino Uno into a 16-voice wavetable synthesizer/MIDI sound generator.
 
