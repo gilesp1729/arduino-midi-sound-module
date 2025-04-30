@@ -69,7 +69,8 @@
 */
 
 #include <stdint.h>
-#include "midisynth.h"
+// TODO Adjust this when the library is bedded down.
+#include "C:\Users\giles\Dropbox\Arduino\arduino-midi-sound-library\src\midisynth.h"
 
 MidiSynth synth;
 
