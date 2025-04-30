@@ -109,10 +109,13 @@ class Synth {
     static volatile uint16_t         v_bentInterval[Synth::numVoices]; // Q8.8 sampling internal post pitch bend, but prior to freqMod.
     static volatile const int8_t*    v_baseWave[Synth::numVoices];     // Original starting address in wavetable.
     static          uint8_t          _note[Synth::numVoices];          // Index of '_baseInternal' in the '_noteToSamplintInterval' table (for 'pitchBend()').
+
+    static volatile uint32_t         v_delayCounter;                   // Counter for simulating delay(), incremented by the ISR
   
   public:
     void begin(){
       Dac::setup();
+      v_delayCounter = 0;
 
       // Setup Timer2 for sample/mix/output ISR.
       TCCR2A = _BV(WGM21);                // CTC Mode (Clears timer and raises interrupt when OCR2B reaches OCR2A)
@@ -120,11 +123,33 @@ class Synth {
       OCR2A  = samplingInterval;          // Set timer top to sampling interval
       TIMSK2 = _BV(OCIE2A);               // Enable ISR
     }
+
+    // Return the current value of the delay_counter incremented in the ISR. 
+    // The counter counts in ~50us ticks (19800 ticks per second), so overflows in ~60 days. 
+    uint32_t getDelayCount()
+    {
+      suspend();
+      uint32_t count = v_delayCounter;
+      resume();
+      return count;
+    }
+
+    // Delay by N ticks of the delay counter.
+    void delayByCount(int n)
+    {
+      uint32_t current = getDelayCount();
+      while (getDelayCount() - current < n)
+        ;
+
+    }
   
     // Returns the next idle voice, if any.  If no voice is idle, uses envelope stage and amplitude to
-    // choose the best candidate for note-stealing.
-    uint8_t getNextVoice() {
-      uint8_t current = maxVoice;
+    // choose the best candidate for note-stealing. 
+    
+    // Enhancement: Search forward to favour high voice numbers,
+    // backward to favour low ones (for stereo effect from keyboards)
+    uint8_t getNextVoice(bool search_forward) {
+      uint8_t current = search_forward ? 0 : maxVoice;
       uint8_t currentStage;
       int8_t currentAmp;
     
@@ -134,31 +159,64 @@ class Synth {
         currentAmp = currentMod.value;
       }
 
-      for (uint8_t candidate = maxVoice - 1; candidate < maxVoice; candidate--) {
-        const volatile Envelope& candidateMod = v_ampMod[candidate];
-        const uint8_t candidateStage = candidateMod.stageIndex;
-      
-        if (candidateStage >= currentStage) {                 // If the currently chosen voice is in a later amplitude stage, keep it.
-          if (candidateStage == currentStage) {               // Otherwise, if both voices are in the same amplitude stage
-            const int8_t candidateAmp = candidateMod.value;   //   compare amplitudes to determine which voice to prefer.
-          
-            bool selectCandidate = candidateMod.slope >= 0    // If amplitude is increasing...
-              ? candidateAmp >= currentAmp                    //   prefer the lower amplitude voice
-              : candidateAmp <= currentAmp;                   //   otherwise the higher amplitude voice
+      //for (uint8_t candidate = maxVoice - 1; candidate < maxVoice; candidate--) {    // oroginal code
 
-            if (selectCandidate) {
-              current = candidate;
+      if (search_forward)
+      {
+        //for (int8_t candidate = maxVoice - 1; candidate >= 0; candidate--) {    // signed so can test >= 0
+        for (int8_t candidate = 1; candidate <= maxVoice; candidate++) {    // search forward instead of backward
+          const volatile Envelope& candidateMod = v_ampMod[candidate];
+          const uint8_t candidateStage = candidateMod.stageIndex;
+        
+          if (candidateStage >= currentStage) {                 // If the currently chosen voice is in a later amplitude stage, keep it.
+            if (candidateStage == currentStage) {               // Otherwise, if both voices are in the same amplitude stage
+              const int8_t candidateAmp = candidateMod.value;   //   compare amplitudes to determine which voice to prefer.
+            
+              bool selectCandidate = candidateMod.slope >= 0    // If amplitude is increasing...
+                ? candidateAmp >= currentAmp                    //   prefer the lower amplitude voice
+                : candidateAmp <= currentAmp;                   //   otherwise the higher amplitude voice
+
+              if (selectCandidate) {
+                current = candidate;
+                currentStage = candidateStage;
+                currentAmp = candidateAmp;
+              }
+            } else {
+              current = candidate;                              // Else, if the candidate is in a later ADSR stage, prefer it.
               currentStage = candidateStage;
-              currentAmp = candidateAmp;
+              currentAmp = candidateMod.value;
             }
-          } else {
-            current = candidate;                              // Else, if the candidate is in a later ADSR stage, prefer it.
-            currentStage = candidateStage;
-            currentAmp = candidateMod.value;
           }
         }
       }
-    
+      else
+      {
+        // Search backward (as per original code). Only the loop parameters change.
+        for (int8_t candidate = maxVoice - 1; candidate >= 0; candidate--) { 
+          const volatile Envelope& candidateMod = v_ampMod[candidate];
+          const uint8_t candidateStage = candidateMod.stageIndex;
+        
+          if (candidateStage >= currentStage) {                 // If the currently chosen voice is in a later amplitude stage, keep it.
+            if (candidateStage == currentStage) {               // Otherwise, if both voices are in the same amplitude stage
+              const int8_t candidateAmp = candidateMod.value;   //   compare amplitudes to determine which voice to prefer.
+            
+              bool selectCandidate = candidateMod.slope >= 0    // If amplitude is increasing...
+                ? candidateAmp >= currentAmp                    //   prefer the lower amplitude voice
+                : candidateAmp <= currentAmp;                   //   otherwise the higher amplitude voice
+
+              if (selectCandidate) {
+                current = candidate;
+                currentStage = candidateStage;
+                currentAmp = candidateAmp;
+              }
+            } else {
+              current = candidate;                              // Else, if the candidate is in a later ADSR stage, prefer it.
+              currentStage = candidateStage;
+              currentAmp = candidateMod.value;
+            }
+          }
+        }
+      }    
       return current;
     }
 
@@ -283,6 +341,8 @@ class Synth {
       
         static uint8_t divider = 0;                       // Time division is used to spread lower-frequency / periodic work
         divider++;                                        // across interrupts.
+
+        v_delayCounter++;                                  // Bump the delay counter (used to replace delay() etc)
       
         const uint8_t voice = divider & 0x0F;             // Bottom 4 bits of 'divider' selects which voice to perform work on.
       
@@ -400,6 +460,8 @@ volatile uint8_t        Synth::v_vol[Synth::numVoices]          = { 0 };
 volatile uint16_t       Synth::v_bentInterval[Synth::numVoices] = { 0 };
 volatile const int8_t*  Synth::v_baseWave[Synth::numVoices]     = { 0 };
          uint8_t        Synth::_note[Synth::numVoices]          = { 0 };
+
+volatile uint32_t       Synth::v_delayCounter                   = 0;
 
 SIGNAL(TIMER2_COMPA_vect) {
   Synth::isr();

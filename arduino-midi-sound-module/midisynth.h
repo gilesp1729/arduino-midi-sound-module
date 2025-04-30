@@ -37,7 +37,16 @@ class MidiSynth final : public Synth {
           note, channelToInstrument[channel]);          //   replace the note with the correct playback frequency
       }                                                 //   for the instrument (expressed as a midi note).
 
-      uint8_t voice = getNextVoice();                   // Find an available voice and play the note.
+#define STEREO_KEYBOARD
+#ifdef STEREO_KEYBOARD
+      uint8_t voice = getNextVoice(note > 60);          // Find an available voice and play the note.
+#else
+      uint8_t voice = getNextVoice(false);              // Find an available voice and play the note.
+#endif      
+      Serial.print("NoteOn ");
+      Serial.print(note);
+      Serial.print(" voice ");
+      Serial.println(voice);
 
       // Combine the incoming velocity with the current channel volume.
       voiceToVelocity[voice] = velocity;
