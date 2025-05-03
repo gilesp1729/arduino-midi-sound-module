@@ -45,14 +45,27 @@ class Instruments {
   private:
     #include "instruments_generated.h"
 
+// Define this out to save ~6kb of PROGMEM. The names are separate in case
+// memory is tight (Uno)
+#define INSTRUMENT_NAMES
+#ifdef INSTRUMENT_NAMES
+    #include "instrument_names.h"
+#endif
+
   public:
     static void getInstrument(uint8_t index, Instrument& instrument) {
       PROGMEM_copy(&instruments[index], instrument);
     }
 
+#ifdef INSTRUMENT_NAMES
+    static void getInstrumentName(uint8_t index, char *name) {  // ensure name large enough
+      strcpy_P(name, InstrumentNames[index]);
+    }
+#endif
+
     static uint8_t getPercussiveInstrument(uint8_t note, Instrument& instrument) {
       /* TODO: Support additional GS/GM2 percussion
-    
+
         27 High Q
         28 Slap
         29 Scratch Push
@@ -115,5 +128,9 @@ constexpr EnvelopeProgram Instruments::EnvelopePrograms[] PROGMEM;
 constexpr Instrument Instruments::instruments[] PROGMEM;
 constexpr int8_t Instruments::Waveforms[] PROGMEM;
 constexpr uint8_t Instruments::percussionNotes[] PROGMEM;
+#ifdef INSTRUMENT_NAMES
+constexpr char Instruments::InstrumentNames[][32] PROGMEM;
+#endif
+
 
 #endif // __INSTRUMENT_H__

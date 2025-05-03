@@ -2,7 +2,7 @@
 This is a fork of [Arduino MIDI Sound Module](https://github.com/DLehenbauer/arduino-midi-sound-module) with the following changes:
 * MIDI messages are not being received on the USART. The underlying routines for starting notes, etc. are exposed so that calling programs may call them directly. They still follow the MIDI functions closely. A sample test program is provided.
 * Arduino routines like Serial are available for use. Timer 0 is still used for PWM output so delay(), millis() etc. may not work as expected. Alternatives are made available.
-* Support for the display has been removed to free up pins.
+* Support for the display has been removed to free up pins. Runs on Uno and Mega2560.
 
 # Future work (piano-specific enhancements)
 * Stereo effects across the length of the keyboard. The output circuit (described below) may be split so voices 0-7 go to the left channel, and voices 8-15 to the right.

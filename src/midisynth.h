@@ -37,16 +37,20 @@ class MidiSynth final : public Synth {
           note, channelToInstrument[channel]);          //   replace the note with the correct playback frequency
       }                                                 //   for the instrument (expressed as a midi note).
 
+// Define this to send low notes ( < Middle C) preferentially to the left channel,
+// and high notes to the right. The full 16 voices are still available to all.
 #define STEREO_KEYBOARD
 #ifdef STEREO_KEYBOARD
       uint8_t voice = getNextVoice(note > 60);          // Find an available voice and play the note.
 #else
       uint8_t voice = getNextVoice(false);              // Find an available voice and play the note.
-#endif      
+#endif
+#if 0
       Serial.print("NoteOn ");
       Serial.print(note);
       Serial.print(" voice ");
       Serial.println(voice);
+#endif
 
       // Combine the incoming velocity with the current channel volume.
       voiceToVelocity[voice] = velocity;
@@ -85,7 +89,7 @@ class MidiSynth final : public Synth {
       // channel volume up to 8-bit so that we can perform an inexpensive '>> 8'.
       return (static_cast<uint16_t>(volume) * static_cast<uint16_t>(velocity)) >> 8;
     }
-  
+
     void midiControlChange(uint8_t channel, uint8_t controller, uint8_t value) {
       switch (controller) {
         // Set channel volume
@@ -103,7 +107,7 @@ class MidiSynth final : public Synth {
           }
           break;
         }
-        
+
         case 0x78: {
           switch (value) {
             case 0: {
@@ -119,10 +123,10 @@ class MidiSynth final : public Synth {
           }
           break;
         }
-        
+
         case 0x7B: {
           switch (value) {
-            case 0: {                                                    
+            case 0: {
               // All Notes Off (for current channel):
               for (int8_t voice = maxVoice; voice >= 0; voice--) {  // For each voice
                 if (voiceToChannel[voice] == channel) {             //   currently playing any note on this channel

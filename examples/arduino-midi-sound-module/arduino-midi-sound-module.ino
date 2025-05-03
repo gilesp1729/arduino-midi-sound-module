@@ -7,6 +7,7 @@
     added, and made into a library. See readme.md for details.
 
     For more sound generation, see:
+      dac.h          - 2-channel PWM DAC
       synth.h        - Core synth engine
       envelope.h     - Flexible envelope generator used to modulate amp, freq, and wave
       midisynth.h    - Extends synth engine w/additional state for MIDI processing
@@ -33,23 +34,26 @@
       - Amplitude, frequency, and wavetable offset modulated by envelope generators
       - Additional volume control per voice (matching MIDI velocity)
 
-    The circuit for one channel. For two channels, split pins 5/6 from 9/10 and give each 
-    pair its own output coupling and filtering capacitor. 
+    The circuit for one channel. For two channels, split pins 5/6 from 9/10 and give each
+    pair its own output coupling and filtering capacitor.
     For this variation, #define STEREO_PIANO in midiNoteOn (midisynth.h)
 
-                    1M (1%)                  10uf*
-        pin 5 >----^v^v^------o--------o------|(----> audio out
-                              |        |
-                   3.9k (1%)  |       === 3.3nf**
-        pin 6 >----^v^v^------o        |
-                              |       gnd
-                              |
-                              |
-                    1M (1%)   |
-        pin 9 >----^v^v^------o
-                              |
-                   3.9k (1%)  |
-       pin 10 >----^v^v^------'
+    Connection to Arduino Uno:(pin numbers differ on Mega)
+
+        Uno     Mega
+                              1M (1%)                  10uf*
+        pin 5   pin 4   >----^v^v^------o--------o------|(----> audio out
+                                        |        |
+                             3.9k (1%)  |       === 3.3nf**
+        pin 6   pin 13  >----^v^v^------o        |
+                                        |       gnd
+                                        |
+                                        |
+                              1M (1%)   |
+        pin 9   pin 11  >----^v^v^------o
+                                        |
+                             3.9k (1%)  |
+       pin 10   pin 12  >----^v^v^------'
 
 
       * Note: A/C coupling capacitor typically optional.  (Negative is on audio out side.)
@@ -60,12 +64,10 @@
                3.3nf ~=  -1.5db    -2.2db     -8.4db
                4.7nf ~=  -2.7db    -3.6db    -11.1db
 
-      For more information about sound generation, see:
-      midisynth.h    - Midi wrapper and top level
-      synth.h        - Core synth engine
-      envelope.h     - Flexible envelope generator used to modulate amp, freq, and wave
-      midisynth.h    - Extends synth engine w/additional state for MIDI processing
-      instruments*.h - Wavetable and envelope generator programs for GM MIDI instruments
+    Note that all these values still result in a lot of 67kHz through each side
+    of the stereo version of this circuit (since there is no cancellation).
+    Use a larger cap, like 22nF, to get these down to an acceptable level.
+
 */
 
 #include <stdint.h>
@@ -73,6 +75,8 @@
 #include "C:\Users\giles\Dropbox\Arduino\arduino-midi-sound-library\src\midisynth.h"
 
 MidiSynth synth;
+static int inst = 0, curr_inst = 0;
+static bool new_inst = false;
 
 // Invoked once after the device is reset, prior to starting the main 'loop()' below.
 void setup() {
@@ -97,37 +101,56 @@ void loop() {
   // instrument change.
   if (Serial.available())
   {
-    int inst;
-
     int key = Serial.read();
 
     for (int i = 0; i < 8; i++)
     {
       if (key == names[i])
       {
-        synth.midiNoteOn(1, octave[i], 100);
+        // If we've changed instrument, set it up.
+        if (new_inst && inst != curr_inst)
+        {
+          char name[80];
+
+          Instruments::getInstrumentName(inst, name);
+          Serial.print(inst);
+          Serial.print(": ");
+          Serial.println(name);
+          synth.midiProgramChange(1, inst);
+          curr_inst = inst;
+          inst = 0;     // ready for next instrument change
+          new_inst = false;
+        }
+
+        // Sound the note.
+        synth.midiNoteOn(1, octave[i], 127);
         off_time[i] = synth.getDelayCount();
         break;
       }
 
-      // Change instrument to the numbered (1-9)
-      if (key > '0' && key <= '9')
-      {
-        inst = key - '0';
-        synth.midiProgramChange(1, inst);
-      }
+    }
+
+    // Change instrument to the numbered.
+    // Accept a 2 or 3 digit number here by building up digits.
+    if (key >= '0' && key <= '9')
+    {
+      inst = (inst * 10) + (key - '0');
+      new_inst = true;
     }
   }
 
+// Define this to stop notes after a delay. Note that organs, etc. can only
+// be stopped this way.
+//#define STOP_NOTES
+#ifdef STOP_NOTES
   for (int i = 0; i < 8; i++)
   {
-    // Process any noteOff calls.
+    // Process any noteOff calls. noteOff after 0.5 second delay.
     if (off_time[i] != 0 && synth.getDelayCount() - off_time[i] > 10000)  // 0.5 sec delay (20 ticks = 1ms)
     {
       synth.midiNoteOff(1, octave[i]);
       off_time[i] = 0;
-      Serial.print("NoteOff ");
-      Serial.println(octave[i]);
     }
   }
+#endif // STOP_NOTES
 }

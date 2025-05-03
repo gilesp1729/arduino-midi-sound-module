@@ -12,6 +12,9 @@
     Another benefit of the dual channel approach is that we can configure the PWMs to cancel
     each other's carrier waves when the signed output is resting at zero.
 
+    For stereo effects the circuit can be split so each PWM channels gets its own output
+    circuit. #define STEREO_KEYBOARD in midiNoteOn() to enable low notes to the left
+    and high to right.
 
     Connection to Arduino Uno:(pin numbers differ on Mega)
 
